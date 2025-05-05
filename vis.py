@@ -1,10 +1,14 @@
 import streamlit as st
 import pandas as pd
 import pydeck as pdk
+import geopandas as gpd
 import plotly.express as px
 from sklearn.cluster import DBSCAN
 from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
+from pymongo import MongoClient
+
+import json
 from datetime import datetime
 
 st.set_page_config(page_title="Bangkok Airbnb Analysis", layout="wide")
@@ -81,47 +85,110 @@ state_colors = {
 # Map the 'state' column to corresponding colors
 filtered_data['color'] = filtered_data['state'].map(state_colors)
 
+# For issue reports
+filtered_data['tooltip_html'] = (
+    "<b>Ticket ID:</b> " + filtered_data['ticket_id'].astype(str) + "<br/>"
+    "<b>State:</b> " + filtered_data['state'] + "<br/>"
+    "<b>Type:</b> " + filtered_data['type'].str.strip("{}") + "<br/>"
+    "<b>Comment:</b> " + filtered_data['comment'] + "<br/>"
+    "<b>District:</b> " + filtered_data['district'] + "<br/>"
+    "<b>Before:</b><br/><img src='" + filtered_data['photo'] + "' width='200px'><br/>"
+    "<b>After:</b><br/><img src='" + filtered_data['photo_after'] + "' width='200px'>"
+)
+
 st.subheader("Issue Reports Map")
 col1, col2 = st.columns(2)
 with col1:
     st.metric("Filtered Report Count", f"{len(filtered_data):,}")
 
-tooltip = {
-    "html": """
-    <b>Ticket ID:</b> {ticket_id} <br/>
-    <b>State:</b> {state} <br/>
-    <b>Type:</b> {type} <br/>
-    <b>Comment:</b> {comment} <br/>
-    <b>District:</b> {district} <br/>
-    <b>Before:</b><br/>
-    <img src="{photo}" width="200px"><br/>
-    <b>After:</b><br/>
-    <img src="{photo_after}" width="200px">
-    """,
-    "style": {"backgroundColor": "white", "color": "black"}
-}
+# tooltip_reports = {
+#     "html": """
+#     <b>Ticket ID:</b> {ticket_id} <br/>
+#     <b>State:</b> {state} <br/>
+#     <b>Type:</b> {type} <br/>
+#     <b>Comment:</b> {comment} <br/>
+#     <b>District:</b> {district} <br/>
+#     <b>Before:</b><br/>
+#     <img src="{photo}" width="200px"><br/>
+#     <b>After:</b><br/>
+#     <img src="{photo_after}" width="200px">
+#     """,
+#     "style": {"backgroundColor": "white", "color": "black"}
+# }
 
-layer = pdk.Layer(
+layer_reports = pdk.Layer(
     "ScatterplotLayer",
     data=filtered_data,
     get_position='[lon, lat]',
-    get_radius=80,  
+    get_radius=150,  
     get_color='color', 
     pickable=True
 )
 
+#---------------------------external data----------------------
 
-view_state = pdk.ViewState(
+# Load geojson
+with open('school_in_bangkok.geojson', encoding='utf-8') as f:
+    geojson_data = json.load(f)
+
+# Extract feature data
+features = geojson_data['features']
+
+# Extract data into list of dicts
+records = []
+for feature in features:
+    prop = feature['properties']
+    coords = feature['geometry']['coordinates']
+    record = {
+        'name': prop.get('name'),
+        'lon': coords[0],
+        'lat': coords[1]
+    }
+    records.append(record)
+
+# Convert to DataFrame
+df_geo = pd.DataFrame(records)
+
+df_geo['tooltip_html'] = (
+    "<b>Name:</b> " + df_geo['name']
+)
+
+# tooltip_schools = {
+#     "html": """
+#     <b>Name:</b> {name} <br/>
+#     """,
+#     "style": {"backgroundColor": "white", "color": "black"}
+# }
+
+layer_schools = pdk.Layer(
+    "ScatterplotLayer",
+    data=df_geo,
+    get_position='[lon, lat]',
+    get_radius=100,
+    get_color=[255, 255, 255, 160],
+    pickable=True
+)
+
+#---------------------------combine data--------------------
+tooltip = {
+    "html": "{tooltip_html}",
+    "style": {"backgroundColor": "white", "color": "black"}
+}
+
+# Use either view_state, depending on what makes more sense — here we use issue reports
+combined_view_state = pdk.ViewState(
     latitude=filtered_data['lat'].mean(),
     longitude=filtered_data['lon'].mean(),
     zoom=11,
     pitch=0
 )
 
+# Combine tooltips using a shared tooltip or leave as-is (each layer can have its own)
 r = pdk.Deck(
-    layers=[layer],
-    initial_view_state=view_state,
+    layers=[layer_reports,layer_schools],
+    initial_view_state=combined_view_state,
     tooltip=tooltip
 )
 
+# Show in Streamlit
 st.pydeck_chart(r, use_container_width=True, height=1000)
