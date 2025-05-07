@@ -1,0 +1,14 @@
+folium
+geopandas
+matplotlib.pyplot
+numpy
+pandas
+plotly.express
+pydeck
+pymongo
+requests
+sklearn.cluster
+sklearn.preprocessing
+streamlit
+streamlit.components.v1
+streamlit_folium
