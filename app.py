@@ -344,7 +344,6 @@ with tab1:
     r = pdk.Deck(
         layers=layers_to_show,
         initial_view_state=combined_view_state,
-        map_style='mapbox://styles/mapbox/dark-v9',
         tooltip=tooltip,
         width=1600,
         height=1000,
